@@ -1,5 +1,7 @@
 #include "password.h"
+#include "beep.h"
 #include "stdio.h"
+#include "segment.h"
 
 /* 正确密码 */
 static const uint8_t CORRECT_PASSWORD[PASSWORD_LENGTH] = {1, 2, 3, 4, 5, 6};
@@ -60,6 +62,7 @@ void Password_StartInput(void)
         input_password[i] = 0xFF;
     }
     
+    Segment_DisplayPASS();  // 显示 "PASS"
     printf("\n\r[PWD] 请输入6位密码...\n\r");
 }
 
@@ -82,6 +85,8 @@ void Password_Process(uint8_t ir_keycode)
         {
             input_index--;
             input_password[input_index] = 0xFF;
+            Beep_Tick();  // ← 删除提示音
+            Segment_DisplayPassword(input_index);  // 更新显示
             printf("[PWD] 删除，当前已输入 %d 位\n\r", input_index);
         }
         return;
@@ -93,6 +98,8 @@ void Password_Process(uint8_t ir_keycode)
     {
         input_password[input_index] = number;
         input_index++;
+        Beep_Tick();  // ← 按键提示音
+        Segment_DisplayPassword(input_index);  // 更新显示
         printf("[PWD] 输入第 %d 位: *\n\r", input_index);  // 不显示具体数字
         
         // 检查是否输入完成
@@ -112,11 +119,13 @@ void Password_Process(uint8_t ir_keycode)
             if(correct)
             {
                 current_state = PWD_STATE_SUCCESS;
+                Segment_DisplayOPEN();  // 显示 "OPEN"
                 printf("[PWD] >>> 密码正确！<<<\n\r");
             }
             else
             {
                 current_state = PWD_STATE_FAILED;
+                Segment_DisplayError();  // 显示 "Err"
                 printf("[PWD] >>> 密码错误！<<<\n\r");
             }
         }
@@ -163,6 +172,7 @@ void Password_TimeoutCheck(void)
         if((HAL_GetTick() - last_input_tick) > PASSWORD_TIMEOUT_MS)
         {
             current_state = PWD_STATE_TIMEOUT;
+            Segment_DisplayTimeout();  // 显示 "tout"
             printf("[PWD] >>> 输入超时！<<<\n\r");
         }
     }

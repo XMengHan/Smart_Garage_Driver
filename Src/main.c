@@ -8,11 +8,20 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx_hal.h"
+#include "tim.h"       // ← MX_TIM12_Init() 需要
+#include "i2c.h"       // ← MX_I2C1_Init() 需要
+#include "segment.h"   // ← Segment_Init() 需要
+#include "servo.h"     // ← Servo_Init() 需要
+#include "beep.h"
 #include "usart.h"
 #include "gpio.h"
 #include "stdio.h"
 #include "RemoteInfrared.h"
 #include "password.h"
+#include "adc.h"
+#include "dma.h"
+#include "light_ctrl.h"
+#include "led.h"
 
 /* External variables --------------------------------------------------------*/
 extern __IO uint32_t FlagGotKey;
@@ -20,6 +29,8 @@ extern __IO Remote_Infrared_data_union RemoteInfrareddata;
 
 /* Private variables ---------------------------------------------------------*/
 __IO uint32_t GlobalTimingDelay100us;
+/* 全局变量：ADC数据缓冲区 */
+__IO uint16_t adcx[4] = {0};
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
@@ -32,11 +43,26 @@ int main(void)
     SystemClock_Config();
     
     /* 外设初始化 */
-    MX_GPIO_Init();
+    MX_GPIO_Init();      // 先初始化GPIO基础配置
+    MX_DMA_Init();
+    MX_ADC3_Init();
+    MX_TIM12_Init();
+    MX_I2C1_Init();
     MX_USART1_UART_Init();
+
+    /* 启动ADC DMA传输 */
+    HAL_ADC_Start_DMA(&hadc3, (uint32_t*)adcx, 4);
+
+    /* 模块初始化 */
+    LED_Init();          // ← LED初始化移到这里
+    Segment_Init(&hi2c1);
+    Beep_Init();
+    Servo_Init();
+    LightCtrl_Init();
     Password_Init();
-    
+
     /* 启动信息 */
+    LED_Flow(100, 2);  // 启动时流水2次
     printf("\n\r========================================\n\r");
     printf("    智能私家车库系统 v1.0\n\r");
     printf("========================================\n\r");
@@ -49,46 +75,59 @@ int main(void)
     /* 主循环 */
     while(1)
     {
-        /* 1. 红外解码处理 */
+        /* 1. 心跳指示灯（系统运行指示） */
+        LED_Heartbeat();
+
+        /* 2. 光控任务（环境监测） */
+        LightCtrl_Task();
+        
+        /* 3. 红外解码处理 */
         Remote_Infrared_KeyDeCode();
         
-        /* 2. 检查是否有新按键 */
+        /* 4. 检查是否有新按键 */
         if(FlagGotKey == 1)
         {
             FlagGotKey = 0;
             uint8_t keycode = RemoteInfrareddata.RemoteInfraredDataStruct.bKeyCode;
             Password_Process(keycode);
         }
-        
-        /* 3. 超时检查 */
+
+        /* 5. 超时检查 */
         Password_TimeoutCheck();
         
-        /* 4. 状态机处理 */
+        /* 6. 状态机处理 */
         Password_State_t state = Password_GetState();
         switch(state)
         {
             case PWD_STATE_SUCCESS:
                 printf("[SYS] 密码正确，开门！\n\r");
-                // TODO: Open_Door();  // 舵机抬杆
-                // TODO: LED_Flow();   // 跑马灯
-                // TODO: Beep_OK();    // 提示音
-                HAL_Delay(3000);
-                printf("[SYS] 自动关门\n\r");
+                Beep_OK();      // ← 成功提示音
+                Segment_DisplayOPEN();
+                LED_Success();           // ← 成功指示灯
+                Servo_Open();                    // 抬杆
+                HAL_Delay(5000);                 // 保持5秒
+                Servo_Close();                   // 落杆
+                
+                printf("[SYS] 闸机关闭\n\r");
                 Password_Reset();
                 Password_StartInput();
                 break;
                 
             case PWD_STATE_FAILED:
                 printf("[SYS] 密码错误，报警！\n\r");
-                // TODO: Alarm_Error();  // 蜂鸣器报警
-                // TODO: LED_Alarm();    // 警示灯
-                HAL_Delay(2000);
+                Beep_Alarm();   // ← 报警音
+                Segment_DisplayError();
+                LED_Error();             // ← 错误指示灯
+                HAL_Delay(2000);                 // 报警2秒
                 Password_Reset();
                 Password_StartInput();
                 break;
-                
+                            
             case PWD_STATE_TIMEOUT:
                 printf("[SYS] 输入超时，返回等待\n\r");
+                Segment_DisplayTimeout();
+                LED_FlashAll(200, 2);    // ← 超时闪烁
+                HAL_Delay(2000);                 // 显示2秒
                 Password_Reset();
                 Password_StartInput();
                 break;

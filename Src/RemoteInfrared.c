@@ -12,32 +12,32 @@ __IO Remote_Infrared_data_union RemoteInfrareddata;
 
 
 /************************************************************************
-//´¦ÀíºìÍâ½ÓÊÕ  
--------------------------Ð­Òé--------------------------
-¿ªÊ¼À­µÍ9ms,½Ó×ÅÊÇÒ»¸ö4.5msµÄ¸ßÂö³å,Í¨ÖªÆ÷¼þ¿ªÊ¼´«ËÍÊý¾ÝÁË
-½Ó×ÅÊÇ·¢ËÍ4¸ö8Î»¶þ½øÖÆÂë,µÚÒ»¶þ¸öÊÇÒ£¿ØÊ¶±ðÂë(REMOTE_ID),µÚÒ»¸öÎª
-ÕýÂë(0),µÚ¶þ¸öÎª·´Âë(255),½Ó×ÅÁ½¸öÊý¾ÝÊÇ¼üÖµ,µÚÒ»¸öÎªÕýÂë
-µÚ¶þ¸öÎª·´Âë.·¢ËÍÍêºó40ms,Ò£¿ØÔÙ·¢ËÍÒ»¸ö9msµÍ,2ms¸ßµÄÂö³å,
-±íÊ¾°´¼üµÄ´ÎÊý,³öÏÖÒ»´ÎÔòÖ¤Ã÷Ö»°´ÏÂÁËÒ»´Î,Èç¹û³öÏÖ¶à´Î,Ôò¿É
-ÒÔÈÏÎªÊÇ³ÖÐø°´ÏÂ¸Ã¼ü.
+//ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½  
+-------------------------Ð­ï¿½ï¿½--------------------------
+ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½9ms,ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½4.5msï¿½Ä¸ï¿½ï¿½ï¿½ï¿½ï¿½,Í¨Öªï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½
+ï¿½ï¿½ï¿½ï¿½ï¿½Ç·ï¿½ï¿½ï¿½4ï¿½ï¿½8Î»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½,ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò£ï¿½ï¿½Ê¶ï¿½ï¿½ï¿½ï¿½(REMOTE_ID),ï¿½ï¿½Ò»ï¿½ï¿½Îª
+ï¿½ï¿½ï¿½ï¿½(0),ï¿½Ú¶ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½(255),ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ç¼ï¿½Öµ,ï¿½ï¿½Ò»ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½
+ï¿½Ú¶ï¿½ï¿½ï¿½Îªï¿½ï¿½ï¿½ï¿½.ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½40ms,Ò£ï¿½ï¿½ï¿½Ù·ï¿½ï¿½ï¿½Ò»ï¿½ï¿½9msï¿½ï¿½,2msï¿½ßµï¿½ï¿½ï¿½ï¿½ï¿½,
+ï¿½ï¿½Ê¾ï¿½ï¿½ï¿½ï¿½ï¿½Ä´ï¿½ï¿½ï¿½,ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½ï¿½ï¿½Ö¤ï¿½ï¿½Ö»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ò»ï¿½ï¿½,ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ö¶ï¿½ï¿½,ï¿½ï¿½ï¿½
+ï¿½ï¿½ï¿½ï¿½Îªï¿½Ç³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Â¸Ã¼ï¿½.
 
-*Ãû³Æ: Remote_Infrared_KEY_ISR(INT11_vect )													 
-*¹¦ÄÜ: INT0ÖÐ¶Ï·þÎñ³ÌÐò		       									
-*²ÎÊý: ÎÞ					          									
-*·µ»Ø: ÎÞ		                           								
+*ï¿½ï¿½ï¿½ï¿½: Remote_Infrared_KEY_ISR(INT11_vect )													 
+*ï¿½ï¿½ï¿½ï¿½: INT0ï¿½Ð¶Ï·ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½		       									
+*ï¿½ï¿½ï¿½ï¿½: ï¿½ï¿½					          									
+*ï¿½ï¿½ï¿½ï¿½: ï¿½ï¿½		                           								
 *************************************************************************/	
-// ¼ì²âÂö³å¿í¶È×î³¤Âö¿íÎª5ms
+// ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½î³¤ï¿½ï¿½ï¿½ï¿½Îª5ms
 const uint32_t TIME_DELAY_6MS = 60;
 const uint32_t TIME_DELAY_10MS = 100;
 void Remote_Infrared_KEY_ISR(void)
 {
-	static __IO uint8_t  bBitCounter = 0; //¼üÅÌÖ¡Î»¼ÆÊý
+	static __IO uint8_t  bBitCounter = 0; //ï¿½ï¿½ï¿½ï¿½Ö¡Î»ï¿½ï¿½ï¿½ï¿½
   static __IO uint32_t bKeyCode = 0;
 	bBitCounter++;
 
-	if(bBitCounter == 1)        // ¿ªÊ¼À­µÍ9ms
+	if(bBitCounter == 1)        // ï¿½ï¿½Ê¼ï¿½ï¿½ï¿½ï¿½9ms
 	{
-        if(Remote_Infrared_DAT_INPUT) // ¸ßµçÆ½ÎÞÐ§
+        if(Remote_Infrared_DAT_INPUT) // ï¿½ßµï¿½Æ½ï¿½ï¿½Ð§
         {
             bBitCounter = 0;
         }
@@ -46,7 +46,7 @@ void Remote_Infrared_KEY_ISR(void)
             GlobalTimingDelay100us = TIME_DELAY_10MS;
         }
 	}
-	else if(bBitCounter == 2)   // 4.5msµÄ¸ßÂö³å
+	else if(bBitCounter == 2)   // 4.5msï¿½Ä¸ï¿½ï¿½ï¿½ï¿½ï¿½
 	{
         if(Remote_Infrared_DAT_INPUT)
         {
@@ -66,7 +66,7 @@ void Remote_Infrared_KEY_ISR(void)
             bBitCounter = 0;            
         }
 	}
-	else if(bBitCounter == 3)   // 4.5msµÄ¸ßÂö³å
+	else if(bBitCounter == 3)   // 4.5msï¿½Ä¸ï¿½ï¿½ï¿½ï¿½ï¿½
 	{
         if(Remote_Infrared_DAT_INPUT)
         {
@@ -77,7 +77,7 @@ void Remote_Infrared_KEY_ISR(void)
             if((GlobalTimingDelay100us > 5) && (GlobalTimingDelay100us < 20))
             {
                 GlobalTimingDelay100us = TIME_DELAY_6MS;
-                printf("Òýµ¼Âë");
+                printf("ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½");
             }
             else if((GlobalTimingDelay100us > 32) && (GlobalTimingDelay100us < 46))
             {
@@ -94,7 +94,7 @@ void Remote_Infrared_KEY_ISR(void)
             }          
         }
 	}    
-	else if(bBitCounter > 3 && bBitCounter < 68) //½ÓÊÕ8Î»Êý¾Ý
+	else if(bBitCounter > 3 && bBitCounter < 68) //ï¿½ï¿½ï¿½ï¿½8Î»ï¿½ï¿½ï¿½ï¿½
 	{  
 
         if(Remote_Infrared_DAT_INPUT)
@@ -147,16 +147,16 @@ void Remote_Infrared_KEY_ISR(void)
 }
 
 /************************************************************************
-*Ãû³Æ: unsigned char Remote_Infrared_KeyDeCode(unsigned char bKeyCode)					 
-*¹¦ÄÜ: PS2¼üÅÌ½âÂë³ÌÐò®û		       									    
-*²ÎÊý: bKeyCode ¼üÅÌÂë 							
-*·µ»Ø: °´¼üµÄASIICÂë		                           								
+*ï¿½ï¿½ï¿½ï¿½: unsigned char Remote_Infrared_KeyDeCode(unsigned char bKeyCode)					 
+*ï¿½ï¿½ï¿½ï¿½: PS2ï¿½ï¿½ï¿½Ì½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½		       									    
+*ï¿½ï¿½ï¿½ï¿½: bKeyCode ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ 							
+*ï¿½ï¿½ï¿½ï¿½: ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ASIICï¿½ï¿½		                           								
 ************************************************************************/
 uint8_t Remote_Infrared_KeyDeCode(void)
 {
 //	uint8_t Key = 0xFF;
 
-	if (FlagGotKey == 1)//Í¨Âë
+	if (FlagGotKey == 1)//Í¨ï¿½ï¿½
 	{
         FlagGotKey = 0;
         if((RemoteInfrareddata.RemoteInfraredDataStruct.bID == (uint8_t)~ RemoteInfrareddata.RemoteInfraredDataStruct.bIDNot)
@@ -169,7 +169,7 @@ uint8_t Remote_Infrared_KeyDeCode(void)
 					printf("ERROR  ");
 					break;
 				case 0x78:
-					  printf("É¾³ý   ");
+					  printf("É¾ï¿½ï¿½   ");
 						break;
 				case 0x38:
 					printf("HTML5/FLASH    ");
