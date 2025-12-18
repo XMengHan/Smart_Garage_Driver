@@ -53,6 +53,40 @@
 #define SEG_STAR 		 0x40
 #define SERVO_CLOSE  600
 #define SERVO_OPEN   2400
+#define NOTE_REST 0u
+#define NOTE_C4  19u   // 5000 / 262 Hz
+#define NOTE_D4  17u
+#define NOTE_E4  15u
+#define NOTE_F4  14u
+#define NOTE_G4  13u
+#define NOTE_A4  11u
+#define NOTE_B4  10u
+#define NOTE_C5   9u
+
+static const buzzer_note_t ode_to_joy[] =
+{
+    {NOTE_E4, 400}, {NOTE_E4, 400}, {NOTE_F4, 400}, {NOTE_G4, 400},
+    {NOTE_G4, 400}, {NOTE_F4, 400}, {NOTE_E4, 400}, {NOTE_D4, 400},
+    {NOTE_C4, 400}, {NOTE_C4, 400}, {NOTE_D4, 400}, {NOTE_E4, 400},
+    {NOTE_D4, 600}, {NOTE_C4, 200}, {NOTE_C4, 800},
+
+    {NOTE_E4, 400}, {NOTE_E4, 400}, {NOTE_F4, 400}, {NOTE_G4, 400},
+    {NOTE_G4, 400}, {NOTE_F4, 400}, {NOTE_E4, 400}, {NOTE_D4, 400},
+    {NOTE_C4, 400}, {NOTE_C4, 400}, {NOTE_D4, 400}, {NOTE_E4, 400},
+    {NOTE_D4, 600}, {NOTE_C4, 200}, {NOTE_C4, 800},
+
+    {NOTE_D4, 400}, {NOTE_D4, 400}, {NOTE_E4, 400}, {NOTE_C4, 400},
+    {NOTE_D4, 400}, {NOTE_E4, 200}, {NOTE_F4, 200}, {NOTE_E4, 400}, {NOTE_C4, 400},
+    {NOTE_D4, 400}, {NOTE_E4, 200}, {NOTE_F4, 200}, {NOTE_E4, 400}, {NOTE_D4, 400},
+    {NOTE_C4, 400}, {NOTE_C4, 400}, {NOTE_D4, 400}, {NOTE_G4, 400},
+    {NOTE_E4, 600}, {NOTE_REST, 200}, {NOTE_C4, 800}
+};
+
+typedef struct
+{
+    uint32_t tone_delay;   // 0 means a rest
+    uint16_t duration_ms;  // how long the note/rest should last
+} buzzer_note_t;
 /* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
@@ -167,15 +201,16 @@ int main(void)
 	uint8_t test_buf[8] = {14,14,14,14,14,14,14,14};
 
 	Seg_Display(test_buf);
+  Buzzer_Tone(2, 50);
   /* USER CODE BEGIN 2 */
   printf("\n\r=================================================");
-  printf("\n\r      ?? 基于 STM32F407 智能私家车库系统       ");
+  printf("\n\r     基于 STM32F407 智能私家车库系统       ");
   printf("\n\r=================================================");
   printf("\n\r [系统功能就绪]");
-  printf("\n\r 1. ? 门禁控制: 请使用红外遥控器输入密码");
+  printf("\n\r 1. 门禁控制: 请使用红外遥控器输入密码");
   printf("\n\r    - 默认密码: 123456");
   printf("\n\r    - 按键: 0-9输入, CH-删除");
-  printf("\n\r 2. ? 环境感知: 光敏传感器已启动");
+  printf("\n\r 2. 环境感知: 光敏传感器已启动");
   printf("\n\r    - 天黑自动开启车库照明 (继电器吸合)");
   printf("\n\r    - 天亮自动关闭车库照明");
   printf("\n\r-------------------------------------------------");
@@ -511,14 +546,25 @@ void Buzzer_Tone(uint32_t tone_delay, uint32_t duration_ms)
     }
 }
 
-// 开门旋律 (??? Do-Mi-So)
 void Buzzer_Play_Melody(void)
 {
-    Buzzer_Tone(4, 150); // 低音
-    HAL_Delay(500);      // 持续 (50ms)
-    Buzzer_Tone(3, 150); // 中音
-    HAL_Delay(500);
-    Buzzer_Tone(2, 300); // 高音
+    for(size_t i = 0; i < sizeof(ode_to_joy)/sizeof(ode_to_joy[0]); ++i)
+    {
+        const buzzer_note_t *note = &ode_to_joy[i];
+
+        if(note->tone_delay == NOTE_REST)
+        {
+            HAL_Delay(note->duration_ms);
+        }
+        else
+        {
+            Buzzer_Tone(note->tone_delay, note->duration_ms);
+        }
+
+        HAL_Delay(30); // brief separation between notes
+    }
+
+    HAL_Delay(1000); // pause before replaying
 }
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
