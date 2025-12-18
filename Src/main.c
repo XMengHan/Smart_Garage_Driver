@@ -1,340 +1,589 @@
 /**
   ******************************************************************************
-  * @file    main.c
-  * @brief   智能私家车库系统 v2.0 - 主程序（安全加固版）
-  * @note    基于 STM32F407 + HAL 库
-  * 
-  * @features
-  *   - 完全模块化架构
-  *   - 数据单元统一管理（system_data）
-  *   - 硬件抽象层（hardware_interface）
-  *   - 非阻塞延时工具（non_blocking）
-  *   - 冷热启动标志处理
-  *   - 状态机优化
-  *   - 独立看门狗保护（10秒超时）
-  *   - 密码安全机制（防暴力破解、时序攻击）
+  * File Name          : main.c
+  * Description        : Main program body
+  ******************************************************************************
+  *
+  * COPYRIGHT(c) 2015 STMicroelectronics
+  *
+  * Redistribution and use in source and binary forms, with or without modification,
+  * are permitted provided that the following conditions are met:
+  *   1. Redistributions of source code must retain the above copyright notice,
+  *      this list of conditions and the following disclaimer.
+  *   2. Redistributions in binary form must reproduce the above copyright notice,
+  *      this list of conditions and the following disclaimer in the documentation
+  *      and/or other materials provided with the distribution.
+  *   3. Neither the name of STMicroelectronics nor the names of its contributors
+  *      may be used to endorse or promote products derived from this software
+  *      without specific prior written permission.
+  *
+  * THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+  * AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+  * IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+  * DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+  * FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+  * DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+  * SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+  * CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+  * OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+  * OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+  *
   ******************************************************************************
   */
-
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx_hal.h"
+#include "usart.h"
+#include "gpio.h"
+#include "i2c.h"
+#include "zlg7290.h"
+
+/* USER CODE BEGIN Includes */
 #include "stdio.h"
-#include "iwdg.h"                  // 看门狗头文件
 #include "RemoteInfrared.h"
-#include "password.h"
-#include "light_ctrl.h"
-#include "led.h"
-#include "system_data.h"           // 数据单元
-#include "hardware_interface.h"    // 硬件接口
-#include "non_blocking.h"          // 非阻塞工具
+#include "tim.h"
+#include "adc.h"
+#include "dma.h"
 
-/* External variables --------------------------------------------------------*/
-extern __IO uint32_t FlagGotKey;
-extern __IO Remote_Infrared_data_union RemoteInfrareddata;
-extern __IO uint32_t GlobalTimingDelay100us;
-extern IWDG_HandleTypeDef hiwdg;   // 看门狗句柄
+#define RELAY_PORT GPIOG
+#define RELAY_PIN  GPIO_PIN_8
 
-/* 系统状态枚举 */
-typedef enum {
-    SYS_STATE_IDLE = 0,
-    SYS_STATE_SUCCESS_OPEN,
-    SYS_STATE_SUCCESS_WAIT,
-    SYS_STATE_SUCCESS_CLOSE,
-    SYS_STATE_ERROR,
-    SYS_STATE_TIMEOUT,
-    SYS_STATE_LOCKED         // ← 新增：系统锁定状态
-} System_State_t;
+#define KEY_DEL 		 0x78
+#define PASSWORD_LEN 8
+#define DISP_LEN	 	 8
+#define SEG_STAR 		 0x40
+#define SERVO_CLOSE  600
+#define SERVO_OPEN   2400
+/* USER CODE END Includes */
 
 /* Private variables ---------------------------------------------------------*/
-static System_State_t system_state = SYS_STATE_IDLE;
-static NonBlock_Delay_t state_delay = {0};
-static NonBlock_Delay_t lockout_display_delay = {0};  // ← 锁定状态显示延时
+
+/* USER CODE BEGIN PV */
+/* Private variables ---------------------------------------------------------*/
+__IO uint32_t GlobalTimingDelay100us;
+uint16_t adc_raw_data[4];
+/* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
-void Error_Handler(void);
-void System_HandleLockout(void);
+void Seg_Display(uint8_t *buf);
+void Password_Input(uint8_t num);
+uint8_t Password_Check(void);
+void Seg_Show_OPEN(void);
+void Seg_Show_Err(void);
+void Password_Reset(void);
+void Password_Delete(void);
+void Servo_Set(uint16_t pwm);
+void LED_All_Off(void);
+void LED_All_On(void);
+void Turn_On_LED(uint8_t LED_NUM);
+void Buzzer_Tone(uint32_t tone_delay, uint32_t duration_ms);
+void Buzzer_Play_Melody(void);
+void Relay_Init_GPIO(void);
+void Relay_Control(uint8_t state);
 
-/**
-  * @brief  主函数
-  */
+/* USER CODE BEGIN PFP */
+/* Private function prototypes -----------------------------------------------*/
+
+/* USER CODE END PFP */
+
+/* USER CODE BEGIN 0 */
+// 数码管转化
+const uint8_t SEG_CODE_TABLE[16] =
+{
+    0xFC, // 0
+    0x0C, // 1
+    0xDA, // 2
+    0xF2, // 3
+    0x66, // 4
+    0xB6, // 5
+    0xBE, // 6
+    0xE0, // 7
+    0xFE, // 8
+    0xE6, // 9
+
+    0xEE, // A
+    0x3E, // b
+    0x9C, // C
+    0x7A, // d
+    0x00, // blank(?)
+    0xFC  // all on
+};
+/* USER CODE BEGIN 0 */
+
+typedef enum
+{
+    SYS_IDLE = 0,        // 待机
+    SYS_INPUT_PWD,       // 输入密码ing
+    SYS_VERIFY,          // 验证密码
+    SYS_OPEN,            // 开门ing
+    SYS_ERROR            // 密码错误
+} SystemState_t;
+
+SystemState_t SysState = SYS_IDLE;
+
+/* 密码相关 */
+uint8_t input_buf[DISP_LEN] = {14, 14, 14, 14, 14, 14};
+uint8_t input_index = 0;
+uint8_t password[PASSWORD_LEN] = {1,2,3,4,5,6,7,8};
+uint8_t display_buf[PASSWORD_LEN] = {0};
+
+uint32_t open_tick = 0;
+uint32_t err_tick = 0;
+uint32_t led_tick = 0;
+uint8_t led_count = 0;
+
+/* USER CODE END 0 */
+
 int main(void)
 {
-    /* ==================== 系统初始化 ==================== */
-    
-    /* MCU基础初始化 */
-    HAL_Init();
-    SystemClock_Config();
-    
-    /* 数据单元初始化（包含冷热启动检测） */
-    SystemData_Init();
-    
-    /* 硬件接口初始化（包含看门狗） */
-    HW_Init_All();
-    
-    printf("[SYS] 等待车辆到达...\n\r");
-    
-    /* 进入待机状态 */
-    system_state = SYS_STATE_IDLE;
-    Password_StartInput();
 
-    /* ==================== 主循环 ==================== */
-    while(1)
-    {
-        /* 任务0: 喂狗（防止系统复位） - 必须放在最前面！ */
-        HAL_IWDG_Refresh(&hiwdg);
-        
-        /* 任务1: 心跳指示灯 */
-        LED_Heartbeat();
+  /* USER CODE BEGIN 1 */
 
-        /* 任务2: 光控照明 */
-        LightCtrl_Task();
-        
-        /* 任务3: 红外解码 */
-        Remote_Infrared_KeyDeCode();
-        
-        /* 任务4: 按键处理 */
-        if(FlagGotKey == 1)
-        {
-            FlagGotKey = 0;
-            uint8_t keycode = RemoteInfrareddata.RemoteInfraredDataStruct.bKeyCode;
-            
-            /* 将按键数据保存到数据单元 */
-            g_system.ir_key_flag = 1;
-            g_system.ir_keycode = keycode;
-            
-            Password_Process(keycode);
-        }
+  /* USER CODE END 1 */
 
-        /* 任务5: 超时检查 */
-        Password_TimeoutCheck();
-        
-        /* 任务6: 状态机处理（非阻塞） */
-        Password_State_t pwd_state = Password_GetState();
-        
-        switch(system_state)
-        {
-            /* ==================== 待机状态 ==================== */
-            case SYS_STATE_IDLE:
-                /* 检查是否进入锁定状态 */
-                if(pwd_state == PWD_STATE_LOCKED)
-                {
-                    system_state = SYS_STATE_LOCKED;
-                    NonBlock_Delay_Start(&lockout_display_delay, 5000);  // 5秒更新一次显示
-                    break;
-                }
-                
-                /* 检测密码状态变化 */
-                if(pwd_state == PWD_STATE_SUCCESS)
-                {
-                    system_state = SYS_STATE_SUCCESS_OPEN;
-                    SystemData_IncSuccessCount();  // 统计成功次数
-                }
-                else if(pwd_state == PWD_STATE_FAILED)
-                {
-                    system_state = SYS_STATE_ERROR;
-                    SystemData_IncFailedCount();  // 统计失败次数
-                }
-                else if(pwd_state == PWD_STATE_TIMEOUT)
-                {
-                    system_state = SYS_STATE_TIMEOUT;
-                    SystemData_IncTimeoutCount();  // 统计超时次数
-                }
-                break;
-                
-            /* ==================== 开门状态 ==================== */
-            case SYS_STATE_SUCCESS_OPEN:
-                printf("[SYS] 密码正确，开门！\n\r");
-                
-                /* 通过硬件接口层调用 */
-                HW_Beep_OK();
-                HW_Segment_ShowOPEN();
-                HW_LED_Success();
-                HW_Servo_Open();
-                
-                /* 启动非阻塞延时 */
-                NonBlock_Delay_Start(&state_delay, 5000);
-                
-                system_state = SYS_STATE_SUCCESS_WAIT;
-                break;
-                
-            /* ==================== 等待状态 ==================== */
-            case SYS_STATE_SUCCESS_WAIT:
-                /* 非阻塞等待5秒（期间持续喂狗，已在循环开头处理） */
-                if(NonBlock_Delay_Check(&state_delay))
-                {
-                    system_state = SYS_STATE_SUCCESS_CLOSE;
-                }
-                break;
-                
-            /* ==================== 关门状态 ==================== */
-            case SYS_STATE_SUCCESS_CLOSE:
-                HW_Servo_Close();
-                printf("[SYS] 闸机关闭\n\r");
-                
-                Password_Reset();
-                Password_StartInput();
-                system_state = SYS_STATE_IDLE;
-                break;
-                
-            /* ==================== 错误状态 ==================== */
-            case SYS_STATE_ERROR:
-                printf("[SYS] 密码错误，报警！\n\r");
-                
-                HW_Beep_Alarm();
-                HW_Segment_ShowError();
-                HW_LED_Error();
-                
-                Password_Reset();
-                Password_StartInput();
-                system_state = SYS_STATE_IDLE;
-                break;
-                
-            /* ==================== 超时状态 ==================== */
-            case SYS_STATE_TIMEOUT:
-                printf("[SYS] 输入超时\n\r");
-                
-                HW_Segment_ShowTimeout();
-                HW_LED_FlashAll(200, 2);
-                
-                Password_Reset();
-                Password_StartInput();
-                system_state = SYS_STATE_IDLE;
-                break;
-                
-            /* ==================== 锁定状态 ==================== */
-            case SYS_STATE_LOCKED:
-                System_HandleLockout();  // ← 处理锁定状态
-                break;
-                
-            default:
-                system_state = SYS_STATE_IDLE;
-                break;
-        }
-    }
-}
+  /* MCU Configuration----------------------------------------------------------*/
 
-/**
-  * @brief  处理系统锁定状态
-  * @note   每5秒更新一次剩余时间显示
-  */
-void System_HandleLockout(void)
+  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
+  HAL_Init();
+
+  /* Configure the system clock */
+  SystemClock_Config();
+
+  /* Initialize all configured peripherals */
+  MX_GPIO_Init();
+	MX_TIM12_Init();
+	
+	MX_I2C1_Init();
+  MX_USART1_UART_Init();
+	
+	//MX_DMA_Init();
+	//MX_ADC3_Init();
+	//Relay_Init_GPIO();
+	
+	HAL_TIM_PWM_Start(&htim12, TIM_CHANNEL_1);
+	
+	//HAL_ADC_Start_DMA(&hadc3, (uint32_t*)adc_raw_data, 4);
+
+	uint8_t test_buf[8] = {14,14,14,14,14,14,14,14};
+
+	Seg_Display(test_buf);
+  /* USER CODE BEGIN 2 */
+  printf("\n\r=================================================");
+  printf("\n\r      ?? 基于 STM32F407 智能私家车库系统       ");
+  printf("\n\r=================================================");
+  printf("\n\r [系统功能就绪]");
+  printf("\n\r 1. ? 门禁控制: 请使用红外遥控器输入密码");
+  printf("\n\r    - 默认密码: 123456");
+  printf("\n\r    - 按键: 0-9输入, CH-删除");
+  printf("\n\r 2. ? 环境感知: 光敏传感器已启动");
+  printf("\n\r    - 天黑自动开启车库照明 (继电器吸合)");
+  printf("\n\r    - 天亮自动关闭车库照明");
+  printf("\n\r-------------------------------------------------");
+  printf("\n\r 系统初始化完成，正在运行中... \n\r");
+  /* USER CODE END 2 */
+	uint32_t light_check_tick = 0;
+  /* Infinite loop */
+  /* USER CODE BEGIN WHILE */
+while (1)
 {
-    /* 获取剩余锁定时间 */
-    uint32_t remaining = Password_GetLockoutRemaining();
-    
-    /* 检查是否解除锁定 */
-    if(remaining == 0)
+    uint8_t key;
+
+    key = Remote_Infrared_KeyDeCode();
+	/*
+	  if (HAL_GetTick() - light_check_tick > 500)
+		{
+				light_check_tick = HAL_GetTick();
+
+				if (adc_raw_data[1] > 2000) // 
+				{
+						Relay_Control(1); // 
+				}
+				else
+				{
+						Relay_Control(0); //
+				}
+		}*/
+
+    switch(SysState)
     {
-        printf("[SYS] 锁定解除，恢复正常\n\r");
-        HW_Beep_Tick();
-        Password_Reset();
-        Password_StartInput();
-        system_state = SYS_STATE_IDLE;
-        return;
-    }
-    
-    /* 定期更新显示 */
-    if(NonBlock_Delay_Check(&lockout_display_delay))
-    {
-        printf("[SYS] ?? 系统锁定中，剩余 %lu 秒\n\r", remaining);
-        
-        /* 数码管显示 "Err" */
-        HW_Segment_ShowError();
-        
-        /* LED 红色闪烁 */
-        HW_LED_Error();
-        
-        /* 蜂鸣器短鸣提示 */
-        HW_Beep_Tick();
-        
-        /* 重新启动延时 */
-        NonBlock_Delay_Start(&lockout_display_delay, 5000);
-    }
-    
-    /* 锁定期间拒绝任何输入 */
-    if(FlagGotKey == 1)
-    {
-        FlagGotKey = 0;  // 清除按键标志
-        HW_Beep_Alarm();  // 报警提示
-        printf("[SYS] 系统已锁定，拒绝输入！剩余 %lu 秒\n\r", remaining);
+        /* ================== 待机 ================== */
+        case SYS_IDLE:
+        {
+						Servo_Set(SERVO_CLOSE);
+						LED_All_Off();
+					
+            if (key <= 9)
+            {
+								Buzzer_Tone(2, 50);
+                Password_Reset();          // 清空
+                Password_Input(key);       // 输入第一位
+                SysState = SYS_INPUT_PWD;
+            }
+        }
+        break;
+
+        /* ================== 输入密码 ================== */
+        case SYS_INPUT_PWD:
+        {
+            if (key <= 9)
+            {
+                Password_Input(key);
+								Buzzer_Tone(2, 50);
+
+                /* 输入8位，校验 */
+                if (input_index >= PASSWORD_LEN)
+                {
+                    SysState = SYS_VERIFY;
+                } 
+            } else if (key == KEY_DEL) {
+								Buzzer_Tone(2, 50);
+								Password_Delete();
+						}
+        }
+        break;
+
+        /* ================== 校验密码 ================== */
+        case SYS_VERIFY:
+        {
+            if (Password_Check())
+            {
+                Seg_Show_OPEN();           // OPEN
+								Buzzer_Play_Melody();
+							
+                open_tick = HAL_GetTick(); // 记录开门时间
+								led_tick = HAL_GetTick();
+								led_count = 0;
+                SysState = SYS_OPEN;
+            }
+            else
+            {
+                Seg_Show_Err();            // Err
+							  Buzzer_Tone(3, 1000);
+							
+                err_tick = HAL_GetTick();
+                SysState = SYS_ERROR;
+            }
+        }
+        break;
+
+        /* ================== 开门 ================== */
+        case SYS_OPEN:
+        {
+						Servo_Set(SERVO_OPEN);
+            /* 不急  */
+						if (HAL_GetTick() - led_tick >= 2000)
+						{
+								Turn_On_LED(led_count % 4);
+								led_count++;
+								led_tick = HAL_GetTick();
+						}
+					
+            if (HAL_GetTick() - open_tick >= 50000)
+            {
+                /* 5s关门 */
+								Servo_Set(SERVO_CLOSE);
+								LED_All_Off();
+                Password_Reset();
+                SysState = SYS_IDLE;
+            }
+        }
+        break;
+
+        /* ================== 报警  ================== */
+        case SYS_ERROR:
+        {
+						LED_All_On();
+            /* 不急 */
+            if (HAL_GetTick() - err_tick >= 20000)
+            {
+								LED_All_Off();
+                Password_Reset();
+                SysState = SYS_IDLE;
+            }
+        }
+        break;
+
+        default:
+            SysState = SYS_IDLE;
+            break;
     }
 }
 
-/**
-  * @brief  系统时钟配置
-  */
+
+}
+
+/** System Clock Configuration
+*/
 void SystemClock_Config(void)
 {
-    RCC_OscInitTypeDef RCC_OscInitStruct;
-    RCC_ClkInitTypeDef RCC_ClkInitStruct;
 
-    __PWR_CLK_ENABLE();
-    __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
+  RCC_OscInitTypeDef RCC_OscInitStruct;
+  RCC_ClkInitTypeDef RCC_ClkInitStruct;
 
-    RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
-    RCC_OscInitStruct.HSIState = RCC_HSI_ON;
-    RCC_OscInitStruct.HSICalibrationValue = 16;
-    RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
-    HAL_RCC_OscConfig(&RCC_OscInitStruct);
+  __PWR_CLK_ENABLE();
 
-    RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
-    RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
-    RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
-    RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
-    RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
-    HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0);
+  __HAL_PWR_VOLTAGESCALING_CONFIG(PWR_REGULATOR_VOLTAGE_SCALE1);
 
-    HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq()/10000);
-    HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
-    HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
+  RCC_OscInitStruct.OscillatorType = RCC_OSCILLATORTYPE_HSI;
+  RCC_OscInitStruct.HSIState = RCC_HSI_ON;
+  RCC_OscInitStruct.HSICalibrationValue = 16;
+  RCC_OscInitStruct.PLL.PLLState = RCC_PLL_NONE;
+  HAL_RCC_OscConfig(&RCC_OscInitStruct);
+
+  RCC_ClkInitStruct.ClockType = RCC_CLOCKTYPE_PCLK1|RCC_CLOCKTYPE_PCLK2;
+  RCC_ClkInitStruct.SYSCLKSource = RCC_SYSCLKSOURCE_HSI;
+  RCC_ClkInitStruct.AHBCLKDivider = RCC_SYSCLK_DIV1;
+  RCC_ClkInitStruct.APB1CLKDivider = RCC_HCLK_DIV4;
+  RCC_ClkInitStruct.APB2CLKDivider = RCC_HCLK_DIV2;
+  HAL_RCC_ClockConfig(&RCC_ClkInitStruct, FLASH_LATENCY_0);
+
+  HAL_SYSTICK_Config(HAL_RCC_GetHCLKFreq()/10000);
+
+  HAL_SYSTICK_CLKSourceConfig(SYSTICK_CLKSOURCE_HCLK);
+
+  /* SysTick_IRQn interrupt configuration */
+  HAL_NVIC_SetPriority(SysTick_IRQn, 0, 0);
 }
 
-/**
-  * @brief  错误处理函数
-  * @note   当系统发生严重错误时调用，等待看门狗复位
-  */
-void Error_Handler(void)
-{
-    printf("[ERROR] 系统错误！等待看门狗复位...\n\r");
-    
-    /* 禁用中断 */
-    __disable_irq();
-    
-    /* 停留在这里，等待看门狗复位系统 */
-    while(1)
-    {
-        /* 不喂狗，10秒后自动复位 */
-    }
-}
-
-/**
-  * @brief  Printf 重定向到串口
-  */
+/* USER CODE BEGIN 4 */
 int fputc(int ch, FILE *f)
-{ 
-    while((USART1->SR & 0X40) == 0);
-    USART1->DR = (uint8_t)ch;      
-    return ch;
+{ 	
+	while((USART1->SR&0X40)==0);//循环发送,直到发送完毕   
+	USART1->DR = (uint8_t) ch;      
+	return ch;
 }
 
-/**
-  * @brief  SysTick 回调 - 100us 定时基准
-  */
 void HAL_SYSTICK_Callback(void)
 {
-    if(GlobalTimingDelay100us != 0)
+	if(GlobalTimingDelay100us != 0)
     {
-        GlobalTimingDelay100us--;
+       GlobalTimingDelay100us--;
     }
 }
 
-/**
-  * @brief  GPIO 外部中断回调 - 红外接收
-  */
-void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+void Seg_Display(uint8_t *buf)
 {
-    Remote_Infrared_KEY_ISR();
+    uint8_t seg_buf[8];
+
+    for (int i = 0; i < 8; i++)
+    {
+        if (buf[i] <= 15)
+            seg_buf[i] = SEG_CODE_TABLE[buf[i]];
+        else
+            seg_buf[i] = buf[i];   // 灭
+    }
+
+    /*连续写6个字节*/
+    I2C_ZLG7290_Write(&hi2c1, 0x70, 0x10, seg_buf, 8);
 }
 
-/************************ END OF FILE *****************************************/
+void Password_Input(uint8_t num)
+{
+    if (input_index < PASSWORD_LEN)
+    {
+        /* 1. 保存密码 */
+        input_buf[input_index] = num;
+
+        /* 2. * */
+        display_buf[input_index] = SEG_STAR;
+
+        input_index++;
+
+        /* 3. 刷新  */
+        Seg_Display(display_buf);
+    }
+}
+
+uint8_t Password_Check(void)
+{
+    for (int i = 0; i < PASSWORD_LEN; i++)
+    {
+        if (input_buf[i] != password[i])
+            return 0;
+    }
+    return 1;
+}
+
+void Seg_Show_OPEN(void)
+{
+    uint8_t buf[8] = {14,14,0xFC,0xCE,0x9E,0x2A,14,14};
+    I2C_ZLG7290_Write(&hi2c1,0x70,0x10,buf,8);
+}
+
+void Seg_Show_Err(void)
+{
+    uint8_t buf[8] = {14,14,0x9E,0x0A,0x0A,14,14,14};
+    I2C_ZLG7290_Write(&hi2c1,0x70,0x10,buf,8);
+}
+
+void Password_Reset(void)
+{
+    input_index = 0;
+
+    for (int i = 0; i < DISP_LEN; i++){
+        input_buf[i] = 0;
+				display_buf[i] = 0;
+		}
+	
+    Seg_Display(input_buf);
+}
+
+void Password_Delete(void)
+{
+    if (input_index > 0)
+    {
+        input_index--;
+        input_buf[input_index] = 14;
+				display_buf[input_index] = 14;
+
+        /* 清空最后一位 */
+        Seg_Display(display_buf);
+    }
+}
+
+void Servo_Set(uint16_t pwm)
+{
+    __HAL_TIM_SetCompare(&htim12, TIM_CHANNEL_1, pwm);
+}
+
+// 1.全关
+void LED_All_Off(void)
+{
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOF, GPIO_PIN_10, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOH, GPIO_PIN_15, GPIO_PIN_SET);
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0,  GPIO_PIN_SET);
+}
+
+// 2. 全开
+void LED_All_On(void)
+{
+    HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOF, GPIO_PIN_10, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOH, GPIO_PIN_15, GPIO_PIN_RESET);
+    HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0,  GPIO_PIN_RESET);
+}
+
+// 3. 官方LED单开
+void Turn_On_LED(uint8_t LED_NUM)
+{
+
+    LED_All_Off(); 
+
+    switch(LED_NUM)
+    {
+        case 0:
+            HAL_GPIO_WritePin(GPIOH, GPIO_PIN_15, GPIO_PIN_RESET); /* D4 */
+            break;
+        case 1:
+            HAL_GPIO_WritePin(GPIOB, GPIO_PIN_15, GPIO_PIN_RESET); /* D3 */
+            break;
+        case 2:
+            HAL_GPIO_WritePin(GPIOC, GPIO_PIN_0,  GPIO_PIN_RESET); /* D2 */
+            break;
+        case 3:
+            HAL_GPIO_WritePin(GPIOF, GPIO_PIN_10, GPIO_PIN_RESET); /* D1 */
+            break;          
+        default:
+            break;
+    }
+}
+
+/* === 蜂鸣器控制函数 === */
+
+// 产生特定频率和时间的声音
+// tone_delay: 半周期延时 (单位: 100us). 推荐范围: 2~5
+// duration_ms
+void Buzzer_Tone(uint32_t tone_delay, uint32_t duration_ms)
+{
+    // 计数器翻转次数
+    // 周期 = tone_delay * 2 * 100us
+    // 总时间 = duration_ms * 1000us
+    // 次数 = duration_ms * 10 / (tone_delay * 2)
+    uint32_t toggle_counts = (duration_ms * 5) / tone_delay;
+
+    for(uint32_t i = 0; i < toggle_counts; i++)
+    {
+        HAL_GPIO_WritePin(GPIOG, GPIO_PIN_6, GPIO_PIN_SET);
+        HAL_Delay(tone_delay); // ??Delay???100us
+        HAL_GPIO_WritePin(GPIOG, GPIO_PIN_6, GPIO_PIN_RESET);
+        HAL_Delay(tone_delay);
+    }
+}
+
+// 开门旋律 (??? Do-Mi-So)
+void Buzzer_Play_Melody(void)
+{
+    Buzzer_Tone(4, 150); // 低音
+    HAL_Delay(500);      // 持续 (50ms)
+    Buzzer_Tone(3, 150); // 中音
+    HAL_Delay(500);
+    Buzzer_Tone(2, 300); // 高音
+}
+
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
+{
+		Remote_Infrared_KEY_ISR();
+}
+
+/* USER CODE BEGIN 4 */
+
+// --- 继电器初始化 ---
+void Relay_Init_GPIO(void)
+{
+    GPIO_InitTypeDef GPIO_InitStruct = {0};
+
+    // 1.  GPIOG 
+    __HAL_RCC_GPIOG_CLK_ENABLE(); 
+
+    // 2.  PG8
+    GPIO_InitStruct.Pin = RELAY_PIN;
+    GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP; // 推免输出
+    GPIO_InitStruct.Pull = GPIO_NOPULL;
+    GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+    HAL_GPIO_Init(RELAY_PORT, &GPIO_InitStruct);
+    
+    // 默认关闭
+    HAL_GPIO_WritePin(RELAY_PORT, RELAY_PIN, GPIO_PIN_RESET);
+}
+
+// --- 继电器控制 ---
+void Relay_Control(uint8_t state)
+{
+    if(state == 1)
+        HAL_GPIO_WritePin(RELAY_PORT, RELAY_PIN, GPIO_PIN_SET);   // 开
+    else
+        HAL_GPIO_WritePin(RELAY_PORT, RELAY_PIN, GPIO_PIN_RESET); // 关
+}
+/* USER CODE END 4 */
+/* USER CODE END 4 */
+
+#ifdef USE_FULL_ASSERT
+
+/**
+   * @brief Reports the name of the source file and the source line number
+   * where the assert_param error has occurred.
+   * @param file: pointer to the source file name
+   * @param line: assert_param error line source number
+   * @retval None
+   */
+void assert_failed(uint8_t* file, uint32_t line)
+{
+  /* USER CODE BEGIN 6 */
+  /* User can add his own implementation to report the file name and line number,
+    ex: printf("Wrong parameters value: file %s on line %d\r\n", file, line) */
+  /* USER CODE END 6 */
+
+}
+
+#endif
+
+/**
+  * @}
+  */ 
+
+/**
+  * @}
+*/ 
+
+/************************ (C) COPYRIGHT STMicroelectronics *****END OF FILE****/
