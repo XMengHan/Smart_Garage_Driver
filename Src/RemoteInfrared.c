@@ -1,6 +1,8 @@
 #include "RemoteInfrared.h"
+#include "stm32f4xx_hal.h"
 
 #define REPEAT_KEY  0xEE
+#define IR_FILTER_MS 1000 //滤波时间阈值
 
 extern __IO uint32_t GlobalTimingDelay100us;
 extern __IO uint32_t GlobalTimingDelay100usTx;
@@ -154,17 +156,25 @@ void Remote_Infrared_KEY_ISR(void)
 ************************************************************************/
 uint8_t Remote_Infrared_KeyDeCode(void)
 {
-    uint8_t ret = 0xFF;   // ??:???
+    uint8_t ret = 0xFF;   // 默认无按键
+	
+		static uint32_t last_key_tick = 0;
 
     if (FlagGotKey == 1)
     {
         FlagGotKey = 0;
+
+				if ((HAL_GetTick() - last_key_tick) < IR_FILTER_MS)
+        {
+            return 0xFF; // 直接返回无按键
+        }
 
         if ((RemoteInfrareddata.RemoteInfraredDataStruct.bID ==
              (uint8_t)~RemoteInfrareddata.RemoteInfraredDataStruct.bIDNot)
          && (RemoteInfrareddata.RemoteInfraredDataStruct.bKeyCode ==
              (uint8_t)~RemoteInfrareddata.RemoteInfraredDataStruct.bKeyCodeNot))
         {
+						last_key_tick = HAL_GetTick();
             printf("\n\r IR KeyCode = 0x%02X, ",
                    RemoteInfrareddata.RemoteInfraredDataStruct.bKeyCode);
 
@@ -198,4 +208,7 @@ uint8_t Remote_Infrared_KeyDeCode(void)
 
     return ret;
 }
+
+
+
 

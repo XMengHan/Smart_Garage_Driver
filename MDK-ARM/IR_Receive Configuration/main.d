@@ -28,8 +28,11 @@ ir_receive configuration\main.o: ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_h
 ir_receive configuration\main.o: ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_flash_ramfunc.h
 ir_receive configuration\main.o: ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_i2c.h
 ir_receive configuration\main.o: ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_i2c_ex.h
+ir_receive configuration\main.o: ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_iwdg.h
 ir_receive configuration\main.o: ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_pwr.h
 ir_receive configuration\main.o: ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_pwr_ex.h
+ir_receive configuration\main.o: ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_rtc.h
+ir_receive configuration\main.o: ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_rtc_ex.h
 ir_receive configuration\main.o: ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_tim.h
 ir_receive configuration\main.o: ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_tim_ex.h
 ir_receive configuration\main.o: ..\Drivers\STM32F4xx_HAL_Driver\Inc\stm32f4xx_hal_uart.h
@@ -41,3 +44,5 @@ ir_receive configuration\main.o: ..\Inc\RemoteInfrared.h
 ir_receive configuration\main.o: ..\Inc\tim.h
 ir_receive configuration\main.o: ..\Inc\adc.h
 ir_receive configuration\main.o: ..\Inc\dma.h
+ir_receive configuration\main.o: C:\Farsight\Keil_v5\ARM\ARMCC\Bin\..\include\string.h
+ir_receive configuration\main.o: ..\Drivers\CMSIS\Include\core_cm4.h
